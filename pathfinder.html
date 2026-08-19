@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Primary Meta Tags -->
+  <title>Accenture Pathfinder Logic Practice — 1st Round Assessment Simulator</title>
+  <meta name="title" content="Accenture Pathfinder Logic Practice — 1st Round Assessment Simulator">
+  <meta name="description" content="Practice the Accenture Pathfinder Logic game online. Replicate the cognitive pipe routing assessment: rotate cards, solve paths, and launch the rocket to Earth.">
+  <meta name="keywords" content="accenture pathfinder logic, accenture pipe game, accenture 1st round gaming test, accenture cognitive assessment pathfinder, accenture logical planning">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://accenture-gaming-practice.local/pathfinder.html">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Accenture Gaming Practice">
+  <meta property="og:title" content="Accenture Pathfinder Logic Practice Test">
+  <meta property="og:description" content="Free online simulator for Accenture Pathfinder Logic. Rotate pipe cards to route rocket to Earth under real assessment conditions.">
+  <meta property="og:url" content="https://accenture-gaming-practice.local/pathfinder.html">
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="game-page">
+  <div class="game-shell" style="max-width:600px">
+    <div class="game-topbar">
+      <a class="back-btn" href="index.html">&larr; Lobby</a>
+      <div class="score-chip">Score <strong id="score">0</strong></div>
+    </div>
+    
+    <div class="pathfinder-card">
+      <div class="pathfinder-stats">
+        <div class="pathfinder-stat">
+          <span class="pathfinder-stat-label">Round</span>
+          <span class="pathfinder-stat-value purple" id="round">1</span>
+        </div>
+        <div class="pathfinder-stat">
+          <span class="pathfinder-stat-label">Grid</span>
+          <span class="pathfinder-stat-value" id="grid-dim">3×3</span>
+        </div>
+        <div class="pathfinder-stat">
+          <span class="pathfinder-stat-label">Time</span>
+          <span class="pathfinder-stat-value" id="time">45</span>
+        </div>
+      </div>
+      
+      <div id="pf-hint" class="pathfinder-instruction">
+        <strong>Objective:</strong> Rotate cards to connect 🚀 Rocket (Row <span id="row-num">1</span>) to 🌍 Earth (Row <span id="row-num-2">1</span>).
+        <div style="font-size:0.78rem;color:var(--ref-muted);margin-top:6px;padding:4px 8px;background:rgba(245,158,11,0.08);border-radius:6px;border:1px solid rgba(245,158,11,0.25);">
+          💡 <em>Note: If the same problem or layout continues, press <strong>↺ New Puzzle</strong> to generate a fresh path configuration.</em>
+        </div>
+      </div>
+      
+      <div class="pathfinder-scene-wrap" id="pf-scene">
+        <div id="rocket-icon">🚀</div>
+        <div class="path-grid-box">
+          <div id="pipe-grid" class="pipe-grid"></div>
+          <div id="rocket-anim" style="position:absolute;display:none;font-size:2rem;pointer-events:none;z-index:10;line-height:1;margin-top:-1rem;margin-left:-1rem;">🚀</div>
+        </div>
+        <div id="earth-icon">🌍</div>
+      </div>
+      
+      <div id="pf-feedback" class="pathfinder-feedback">Rotate cards to connect 🚀 to 🌍, then press Start!</div>
+      
+      <div class="pathfinder-controls">
+        <button class="btn-ghost" id="btn-new" type="button">↺ New Puzzle</button>
+        <button class="btn-primary" id="btn-start" type="button">▶ Start Rocket</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+let grid = [], ROWS, COLS, CELL_SIZE, targetRow, locked = false;
+let round = 1, score = 0, timeLeft = 45, timerInterval = null;
+
+const pipeGridEl = document.getElementById('pipe-grid');
+const fb = document.getElementById('pf-feedback');
+const rocketIcon = document.getElementById('rocket-icon');
+const earthIcon = document.getElementById('earth-icon');
+
+function shuffle(a) { return a.sort(()=>Math.random()-0.5); }
+
+const GRID_PRESETS = [
+  { r: 3, c: 3, size: 74 },
+  { r: 4, c: 3, size: 64 },
+  { r: 4, c: 4, size: 62 },
+  { r: 5, c: 4, size: 54 },
+  { r: 5, c: 5, size: 50 },
+  { r: 6, c: 5, size: 46 },
+  { r: 6, c: 6, size: 44 }
+];
+
+function generatePath(rows, cols, targetR) {
+  const visited = new Set();
+  const path = [];
+  
+  function walk(r, c) {
+    if (r<0||c<0||r>=rows||c>=cols) return false;
+    const k = `${r},${c}`;
+    if (visited.has(k)) return false;
+    visited.add(k);
+    path.push({r,c});
+    
+    if (c===cols-1 && r===targetR) return true;
+    
+    const dirs = ['E','E','E']; 
+    if (r > targetR) dirs.push('N','N');
+    if (r < targetR) dirs.push('S','S');
+    dirs.push('N','S'); 
+    
+    for (const dir of shuffle(dirs)) {
+      const [dr,dc] = {N:[-1,0],S:[1,0],E:[0,1],W:[0,-1]}[dir];
+      if (walk(r+dr, c+dc)) return true;
+    }
+    
+    path.pop();
+    visited.delete(k);
+    return false;
+  }
+  
+  walk(targetR, 0);
+  return path;
+}
+
+function pathToConnections(path) {
+  const DELTA_TO_DIR = {'-1,0':'N', '1,0':'S', '0,1':'E', '0,-1':'W'};
+  return path.map((cell, i) => {
+    const conns = new Set();
+    if (i === 0) conns.add('W');
+    else {
+      const prev = path[i-1];
+      const OPP = {N:'S',S:'N',E:'W',W:'E'};
+      conns.add(OPP[DELTA_TO_DIR[`${cell.r-prev.r},${cell.c-prev.c}`]]);
+    }
+    if (i === path.length-1) conns.add('E');
+    else {
+      const next = path[i+1];
+      conns.add(DELTA_TO_DIR[`${next.r-cell.r},${next.c-cell.c}`]);
+    }
+    return {r:cell.r, c:cell.c, conns};
+  });
+}
+
+function rotateConns(conns) {
+  const R = {N:'E',E:'S',S:'W',W:'N'};
+  return new Set([...conns].map(d => R[d]));
+}
+
+function findValidPath(g, r, c, tRow) {
+  if (!g[tRow][0].conns.has('W')) return null;
+  const OPP = {N:'S',S:'N',E:'W',W:'E'};
+  const MOVE = {N:[-1,0],S:[1,0],E:[0,1],W:[0,-1]};
+  const visited = new Set();
+  const queue = [{r:tRow, c:0, path:[{r:tRow,c:0}]}];
+  
+  while (queue.length) {
+    const {r,c,path} = queue.shift();
+    const key = `${r},${c}`;
+    if (visited.has(key)) continue;
+    visited.add(key);
+    
+    if (c===COLS-1 && r===tRow && g[r][c].conns.has('E')) return path;
+    
+    for (const dir of g[r][c].conns) {
+      const [dr,dc] = MOVE[dir];
+      const nr=r+dr, nc=c+dc;
+      if (nr>=0&&nc>=0&&nr<ROWS&&nc<COLS&&!visited.has(`${nr},${nc}`)) {
+        if (g[nr][nc].conns.has(OPP[dir])) {
+          queue.push({r:nr,c:nc,path:[...path,{r:nr,c:nc}]});
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function makePipeSVG(conns, size=70) {
+  const h = size/2;
+  const pw = Math.round(size*0.26);
+  let s = '';
+  if(conns.has('N')) s+=`<rect x="${h-pw/2}" y="0" width="${pw}" height="${h+1}"/>`;
+  if(conns.has('S')) s+=`<rect x="${h-pw/2}" y="${h-1}" width="${pw}" height="${h+1}"/>`;
+  if(conns.has('E')) s+=`<rect x="${h-1}" y="${h-pw/2}" width="${h+1}" height="${pw}"/>`;
+  if(conns.has('W')) s+=`<rect x="0" y="${h-pw/2}" width="${h+1}" height="${pw}"/>`;
+  s+=`<circle cx="${h}" cy="${h}" r="${pw*0.55}"/>`;
+  return `<svg viewBox="0 0 ${size} ${size}" width="100%" height="100%" fill="#a100ff" xmlns="http://www.w3.org/2000/svg">${s}</svg>`;
+}
+
+function clickCard(r, c) {
+  if (locked) return;
+  const cell = grid[r][c];
+  cell.conns = rotateConns(cell.conns);
+  const el = document.querySelector(`.pipe-cell[data-r="${r}"][data-c="${c}"]`);
+  el.classList.add('rotating');
+  el.innerHTML = makePipeSVG(cell.conns, CELL_SIZE);
+  setTimeout(() => el.classList.remove('rotating'), 250);
+}
+
+function renderGrid() {
+  pipeGridEl.style.gridTemplateColumns = `repeat(${COLS}, ${CELL_SIZE}px)`;
+  pipeGridEl.style.gridTemplateRows = `repeat(${ROWS}, ${CELL_SIZE}px)`;
+  pipeGridEl.innerHTML = '';
+  
+  for (let r=0; r<ROWS; r++) {
+    for (let c=0; c<COLS; c++) {
+      const cell = document.createElement('div');
+      cell.className = 'pipe-cell';
+      cell.dataset.r = r;
+      cell.dataset.c = c;
+      cell.style.width = CELL_SIZE + 'px';
+      cell.style.height = CELL_SIZE + 'px';
+      cell.innerHTML = makePipeSVG(grid[r][c].conns, CELL_SIZE);
+      
+      if (c===0 && r===targetRow) cell.style.borderLeft = '4px solid #22c55e';
+      if (c===COLS-1 && r===targetRow) cell.style.borderRight = '4px solid #22c55e';
+      
+      cell.addEventListener('click', () => clickCard(r, c));
+      pipeGridEl.appendChild(cell);
+    }
+  }
+  
+  const iconTop = 16 + 4 + targetRow * (CELL_SIZE + 4) + (CELL_SIZE / 2) - 18;
+  rocketIcon.style.top = `${iconTop}px`;
+  earthIcon.style.top = `${iconTop}px`;
+}
+
+function generateNewPuzzle() {
+  clearInterval(timerInterval);
+  locked = false;
+  timeLeft = 45;
+  document.getElementById('time').textContent = timeLeft;
+  document.getElementById('rocket-anim').style.display = 'none';
+  setFeedback('Rotate cards to connect 🚀 to 🌍, then press Start!', '');
+  document.getElementById('round').textContent = round;
+  
+  const preset = GRID_PRESETS[Math.floor(Math.random() * GRID_PRESETS.length)];
+  ROWS = preset.r;
+  COLS = preset.c;
+  CELL_SIZE = preset.size;
+  document.getElementById('grid-dim').textContent = `${COLS}×${ROWS}`;
+  
+  targetRow = Math.floor(Math.random() * ROWS);
+  document.getElementById('row-num').textContent = targetRow + 1;
+  document.getElementById('row-num-2').textContent = targetRow + 1;
+  
+  let path = null;
+  while(!path) {
+    path = generatePath(ROWS, COLS, targetRow);
+  }
+  
+  const pConns = pathToConnections(path);
+  grid = Array.from({length:ROWS}, () => Array(COLS).fill(null));
+  
+  pConns.forEach(pc => { grid[pc.r][pc.c] = pc; });
+  
+  const ALL = ['N','S','E','W'];
+  for (let r=0; r<ROWS; r++) {
+    for (let c=0; c<COLS; c++) {
+      if (!grid[r][c]) {
+        grid[r][c] = {r, c, conns: new Set([ALL[Math.floor(Math.random()*4)]])};
+      }
+      let rots = Math.floor(Math.random()*4);
+      for(let i=0; i<rots; i++) grid[r][c].conns = rotateConns(grid[r][c].conns);
+    }
+  }
+  
+  renderGrid();
+  
+  timerInterval = setInterval(() => {
+    if (locked) return;
+    timeLeft--;
+    document.getElementById('time').textContent = timeLeft;
+    if (timeLeft <= 0) {
+      clearInterval(timerInterval);
+      locked = true;
+      setFeedback('⏰ Time out! Press ↺ New Puzzle if stuck.', 'bad');
+    }
+  }, 1000);
+}
+
+function setFeedback(msg, type) {
+  fb.textContent = msg;
+  fb.className = 'pathfinder-feedback ' + type;
+}
+
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+
+async function animateRocket(pathCells, tRow) {
+  const rocketEl = document.getElementById('rocket-anim');
+  
+  rocketEl.style.display = 'flex';
+  rocketEl.style.transition = 'none';
+  
+  const getCellCenter = (r, c) => {
+    const el = document.querySelector(`.pipe-cell[data-r="${r}"][data-c="${c}"]`);
+    return {
+      left: el.offsetLeft + el.offsetWidth/2 + 4,
+      top:  el.offsetTop  + el.offsetHeight/2 + 4,
+    };
+  };
+  
+  const entryPos = getCellCenter(tRow, 0);
+  rocketEl.style.left = (entryPos.left - CELL_SIZE) + 'px';
+  rocketEl.style.top  = entryPos.top + 'px';
+  
+  await sleep(100);
+  rocketEl.style.transition = 'left 0.35s linear, top 0.35s linear';
+  
+  for (const {r,c} of pathCells) {
+    const pos = getCellCenter(r, c);
+    rocketEl.style.left = pos.left + 'px';
+    rocketEl.style.top  = pos.top  + 'px';
+    document.querySelector(`.pipe-cell[data-r="${r}"][data-c="${c}"]`).classList.add('on-path');
+    await sleep(350);
+  }
+  
+  const exitPos = getCellCenter(tRow, COLS-1);
+  rocketEl.style.left = (exitPos.left + CELL_SIZE) + 'px';
+  rocketEl.style.top  = exitPos.top + 'px';
+  
+  await sleep(400);
+  onPuzzleComplete();
+}
+
+function onStartClick() {
+  if (locked) return;
+  const path = findValidPath(grid, ROWS, COLS, targetRow);
+  if (!path) {
+    setFeedback('❌ No path found! Rotate cards or click ↺ New Puzzle.', 'bad');
+    return;
+  }
+  locked = true;
+  clearInterval(timerInterval);
+  document.querySelectorAll('.pipe-cell').forEach(el => el.style.cursor='default');
+  setFeedback('🚀 Path found! Launching rocket...', 'good');
+  animateRocket(path, targetRow);
+}
+
+function onPuzzleComplete() {
+  round++;
+  score += 200 + timeLeft*4;
+  document.getElementById('score').textContent = score;
+  setFeedback('🎉 Rocket reached Earth! Loading next puzzle...', 'good');
+  setTimeout(generateNewPuzzle, 1800);
+}
+
+document.getElementById('btn-start').addEventListener('click', onStartClick);
+document.getElementById('btn-new').addEventListener('click', () => {
+  score = Math.max(0, score-100);
+  document.getElementById('score').textContent = score;
+  generateNewPuzzle();
+});
+
+generateNewPuzzle();
+</script>
+</body>
+</html>

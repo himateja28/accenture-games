@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Primary Meta Tags -->
+  <title>Accenture Bubble Selection Practice — 1st Round Cognitive Test</title>
+  <meta name="title" content="Accenture Bubble Selection Practice — 1st Round Cognitive Test">
+  <meta name="description" content="Practice the Accenture Bubble Selection cognitive assessment online. Evaluate mixed arithmetic equations (5-0, 10+2) and select bubbles in ascending order under time limits.">
+  <meta name="keywords" content="accenture bubble selection, accenture 1st round gaming test, accenture cognitive assessment bubble, accenture working memory test, accenture placement games">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://accenture-gaming-practice.local/bubble-selection.html">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Accenture Gaming Practice">
+  <meta property="og:title" content="Accenture Bubble Selection Practice Test">
+  <meta property="og:description" content="Free online practice simulator for Accenture Bubble Selection. Evaluate equations and order bubbles in ascending sequence.">
+  <meta property="og:url" content="https://accenture-gaming-practice.local/bubble-selection.html">
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="game-page">
+  <div class="game-shell">
+    <div class="game-topbar">
+      <a class="back-btn" href="index.html">&larr; Lobby</a>
+      <div class="score-chip">Score <strong id="score">0</strong></div>
+    </div>
+    
+    <div class="bubble-card">
+      <div class="bubble-status">
+        <div class="bubble-stat">
+          <span class="bubble-stat-label">Round</span>
+          <span class="bubble-stat-value purple" id="round">1</span>
+        </div>
+        <div class="bubble-stat">
+          <span class="bubble-stat-label">Time</span>
+          <span class="bubble-stat-value" id="time">45</span>
+        </div>
+        <div class="bubble-stat">
+          <span class="bubble-stat-label">Progress</span>
+          <span class="bubble-stat-value" id="progress">0/0</span>
+        </div>
+        <div class="bubble-stat">
+          <span class="bubble-stat-label">Streak</span>
+          <span class="bubble-stat-value" id="streak">0</span>
+        </div>
+      </div>
+      
+      <div class="bubble-instruction-area">
+        <h1 class="bubble-instruction" style="font-size:1.1rem;margin-bottom:2px;">SELECT IN ASCENDING ORDER</h1>
+        <div class="bubble-hint">Evaluate equations, then click from smallest to largest value</div>
+      </div>
+      
+      <div class="bubble-area" id="bubble-container"></div>
+      
+      <div id="feedback" class="bubble-feedback">Click the smallest value to start.</div>
+      
+      <div class="bubble-controls">
+        <button class="btn-ghost" id="btn-restart" type="button">↺ Reset Game</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+let score = 0;
+let round = 1;
+let timeLeft = 45;
+let timerInterval = null;
+let bubblesData = [];
+let expectedIndex = 0;
+let streak = 0;
+let locked = false;
+
+const container = document.getElementById('bubble-container');
+const fb = document.getElementById('feedback');
+
+function ri(min, max) { return Math.floor(Math.random()*(max-min+1))+min; }
+
+function generateBubbles(count, difficulty) {
+  const bubbles = [];
+  const usedVals = new Set();
+  
+  while (bubbles.length < count) {
+    let label, value;
+    const useEq = Math.random() < 0.6; 
+    
+    if (!useEq || difficulty < 2) {
+      value = ri(2, difficulty > 2 ? 99 : 50);
+      label = String(value);
+    } else {
+      const type = ri(1, difficulty >= 3 ? 4 : 2);
+      const a = ri(2, 15), b = ri(1, 9);
+      if (type===1) { label=`${a}+${b}`; value=a+b; }
+      else if (type===2) { label=`${a>b?a:a+b}−${b}`; value=a>b?a-b:a; }
+      else if (type===3) { const x=ri(2,9),y=ri(2,5); label=`${x}×${y}`; value=x*y; }
+      else { const x=ri(2,9),y=ri(2,6); label=`${x*y}÷${y}`; value=x; }
+    }
+    
+    if (value > 0 && !usedVals.has(value)) {
+      usedVals.add(value);
+      bubbles.push({label, value, selected:false});
+    }
+  }
+  
+  return bubbles;
+}
+
+function startRound() {
+  clearInterval(timerInterval);
+  locked = false;
+  timeLeft = Math.max(20, 50 - round*2);
+  expectedIndex = 0;
+  
+  const count = Math.min(10, 4 + Math.floor(round/2));
+  bubblesData = generateBubbles(count, Math.ceil(round/2));
+  
+  bubblesData.sort((a,b) => a.value - b.value);
+  const correctOrder = [...bubblesData];
+  
+  const shuffled = [...bubblesData].sort(()=>Math.random()-0.5);
+  container.innerHTML = '';
+  
+  const areaW = container.clientWidth || 600;
+  const areaH = container.clientHeight || 280;
+  const pad = 50;
+  
+  shuffled.forEach((b, i) => {
+    const el = document.createElement('button');
+    el.className = 'bubble' + (['+','−','×','÷'].some(op=>b.label.includes(op)) ? ' eq-bubble' : '');
+    el.textContent = b.label;
+    
+    let left, top, overlap;
+    let attempts = 0;
+    do {
+      overlap = false;
+      left = ri(pad, areaW - pad*2);
+      top = ri(pad, areaH - pad*2);
+      for (const sibling of container.children) {
+        const sl = parseFloat(sibling.style.left);
+        const st = parseFloat(sibling.style.top);
+        if (Math.hypot(left-sl, top-st) < 90) overlap = true;
+      }
+      attempts++;
+    } while (overlap && attempts < 100);
+    
+    el.style.left = left + 'px';
+    el.style.top = top + 'px';
+    
+    el.addEventListener('click', () => {
+      if (locked || b.selected) return;
+      if (b === correctOrder[expectedIndex]) {
+        b.selected = true;
+        el.classList.add('correct');
+        el.textContent = b.value;
+        expectedIndex++;
+        streak++;
+        score += 10 + streak*2;
+        
+        if (expectedIndex >= correctOrder.length) {
+          locked = true;
+          score += 150 + timeLeft*6;
+          setFeedback('🎉 Perfect! Moving to next round...', 'good');
+          updateDisplays();
+          setTimeout(() => { round++; startRound(); }, 1500);
+        } else {
+          setFeedback(`Correct! ${correctOrder.length - expectedIndex} remaining.`, 'good');
+        }
+      } else {
+        streak = 0;
+        score = Math.max(0, score - 25);
+        el.classList.add('wrong');
+        setTimeout(() => el.classList.remove('wrong'), 300);
+        setFeedback('❌ Wrong! Must be in ascending order.', 'bad');
+      }
+      updateDisplays();
+    });
+    
+    container.appendChild(el);
+  });
+  
+  setFeedback('Click from smallest to largest!', '');
+  updateDisplays();
+  
+  timerInterval = setInterval(() => {
+    if (locked) return;
+    timeLeft--;
+    updateDisplays();
+    if (timeLeft <= 0) {
+      clearInterval(timerInterval);
+      locked = true;
+      streak = 0;
+      setFeedback('⏰ Time out! Round restarting...', 'bad');
+      setTimeout(() => startRound(), 2000);
+    }
+  }, 1000);
+}
+
+function setFeedback(msg, type) {
+  fb.textContent = msg;
+  fb.className = 'bubble-feedback ' + type;
+}
+
+function updateDisplays() {
+  document.getElementById('score').textContent = score;
+  document.getElementById('round').textContent = round;
+  document.getElementById('time').textContent = timeLeft;
+  document.getElementById('progress').textContent = `${expectedIndex}/${bubblesData.length}`;
+  document.getElementById('streak').textContent = streak;
+}
+
+document.getElementById('btn-restart').addEventListener('click', () => {
+  if (confirm("Reset completely?")) {
+    score = 0;
+    round = 1;
+    streak = 0;
+    startRound();
+  }
+});
+
+setTimeout(startRound, 100);
+</script>
+</body>
+</html>

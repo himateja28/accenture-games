@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Primary Meta Tags -->
+  <title>Accenture Key Maze Challenge Practice — 1st Round Cognitive Test</title>
+  <meta name="title" content="Accenture Key Maze Challenge Practice — 1st Round Cognitive Test">
+  <meta name="description" content="Practice the Accenture Key Maze Challenge online. Replicate the 1st round cognitive assessment game with hidden walls, key collection, and timed exit navigation.">
+  <meta name="keywords" content="accenture key maze challenge, accenture hidden maze, accenture 1st round gaming test, accenture cognitive assessment maze, accenture spatial reasoning game">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://accenture-gaming-practice.local/key-maze.html">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Accenture Gaming Practice">
+  <meta property="og:title" content="Accenture Key Maze Challenge Practice Test">
+  <meta property="og:description" content="Interactive practice simulator for the Accenture Key Maze Challenge round. Train your spatial memory and hidden wall navigation.">
+  <meta property="og:url" content="https://accenture-gaming-practice.local/key-maze.html">
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="game-page">
+  <div class="game-shell" style="max-width:520px">
+    <div class="game-topbar">
+      <a class="back-btn" href="index.html">&larr; Lobby</a>
+      <div class="score-chip">Score <strong id="score-disp">0</strong></div>
+    </div>
+    
+    <div class="maze-card">
+      <div class="maze-status">
+        <div class="maze-stat">
+          <span class="maze-stat-label">Level</span>
+          <span class="maze-stat-value purple" id="level-disp">1</span>
+        </div>
+        <div class="maze-stat">
+          <span class="maze-stat-label">Grid</span>
+          <span class="maze-stat-value" id="dim-disp">4×4</span>
+        </div>
+        <div class="maze-stat">
+          <span class="maze-stat-label">Time</span>
+          <span class="maze-stat-value" id="time-disp">0:00</span>
+        </div>
+        <div class="maze-stat">
+          <span class="maze-stat-label">Keys</span>
+          <span class="maze-stat-value" id="keys-disp">0/1</span>
+        </div>
+        <div class="maze-stat">
+          <span class="maze-stat-label">Moves</span>
+          <span class="maze-stat-value" id="moves-disp">0</span>
+        </div>
+      </div>
+      
+      <div class="maze-header">
+        <h1 class="maze-title" style="font-size:1.1rem;margin-bottom:2px;">Accenture Key Maze Challenge</h1>
+        <p class="maze-subtitle">Navigate the invisible maze to collect keys and escape.</p>
+      </div>
+      
+      <div class="key-indicator" id="key-indicator"></div>
+      
+      <div class="maze-board-wrap">
+        <div class="maze-grid" id="maze-board"></div>
+      </div>
+      
+      <div id="feedback" class="maze-feedback">Use WASD or arrows to move.</div>
+      
+      <div class="maze-dpad">
+        <button class="dpad-btn" data-dir="N" type="button" aria-label="Move Up">&uarr;</button>
+        <button class="dpad-btn" data-dir="W" type="button" aria-label="Move Left">&larr;</button>
+        <button class="dpad-btn" data-dir="E" type="button" aria-label="Move Right">&rarr;</button>
+        <button class="dpad-btn" data-dir="S" type="button" aria-label="Move Down">&darr;</button>
+      </div>
+      
+      <div class="maze-controls">
+        <button class="btn-ghost" id="btn-restart" type="button">↺ Restart Level</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+// Random grid configurations per level
+const LEVEL_CONFIGS = [
+  {rows:4, cols:4, time:60, keys:1},
+  {rows:5, cols:4, time:75, keys:1},
+  {rows:5, cols:5, time:90, keys:1},
+  {rows:6, cols:5, time:105, keys:2},
+  {rows:6, cols:6, time:120, keys:2},
+  {rows:7, cols:6, time:135, keys:2},
+  {rows:7, cols:7, time:150, keys:3},
+  {rows:8, cols:8, time:180, keys:3}
+];
+
+let currentLevel = 0;
+let score = 0;
+let ROWS, COLS, TIME_LIMIT, NUM_KEYS;
+let passages = [];
+let player = {r:0, c:0};
+let exit = {r:0, c:0};
+let keys = [];
+let moves = 0;
+let timeLeft = 0;
+let timerInterval = null;
+let locked = false;
+let levelDone = false;
+
+const board = document.getElementById('maze-board');
+const fb = document.getElementById('feedback');
+
+function shuffle(a) { return a.sort(()=>Math.random()-0.5); }
+
+function generateMaze(rows, cols) {
+  const passages = Array.from({length:rows}, () => Array.from({length:cols}, () => new Set()));
+  const visited = Array.from({length:rows}, () => Array(cols).fill(false));
+  const DIRS = {N:[-1,0], S:[1,0], E:[0,1], W:[0,-1]};
+  const OPP = {N:'S',S:'N',E:'W',W:'E'};
+  function carve(r,c){
+    visited[r][c]=true;
+    for(const dir of shuffle(['N','S','E','W'])){
+      const [dr,dc]=DIRS[dir];
+      const nr=r+dr,nc=c+dc;
+      if(nr>=0&&nc>=0&&nr<rows&&nc<cols&&!visited[nr][nc]){
+        passages[r][c].add(dir);
+        passages[nr][nc].add(OPP[dir]);
+        carve(nr,nc);
+      }
+    }
+  }
+  carve(0,0);
+  return passages;
+}
+
+function startLevel(lvl) {
+  clearInterval(timerInterval);
+  if (lvl >= LEVEL_CONFIGS.length) {
+    const randCfg = LEVEL_CONFIGS[Math.floor(Math.random() * LEVEL_CONFIGS.length)];
+    ROWS = randCfg.rows;
+    COLS = randCfg.cols;
+    TIME_LIMIT = randCfg.time;
+    NUM_KEYS = randCfg.keys;
+  } else {
+    currentLevel = lvl;
+    const cfg = LEVEL_CONFIGS[currentLevel];
+    ROWS = cfg.rows;
+    COLS = cfg.cols;
+    TIME_LIMIT = cfg.time;
+    NUM_KEYS = cfg.keys;
+  }
+  
+  passages = generateMaze(ROWS, COLS);
+  player = {r:0, c:0};
+  exit = {r:ROWS-1, c:COLS-1};
+  
+  keys = [];
+  const validCells = [];
+  for(let r=0;r<ROWS;r++){
+    for(let c=0;c<COLS;c++){
+      if((r===0&&c===0) || (r===ROWS-1&&c===COLS-1)) continue;
+      validCells.push({r,c});
+    }
+  }
+  shuffle(validCells);
+  for(let i=0; i<NUM_KEYS; i++) {
+    keys.push({...validCells[i], collected:false});
+  }
+  
+  moves = 0;
+  timeLeft = TIME_LIMIT;
+  locked = false;
+  levelDone = false;
+  
+  updateDisplays();
+  renderBoard();
+  setFeedback('Navigate the maze. Find the keys!', '');
+  
+  timerInterval = setInterval(() => {
+    if (locked) return;
+    timeLeft--;
+    updateDisplays();
+    if (timeLeft <= 0) {
+      clearInterval(timerInterval);
+      locked = true;
+      setFeedback('⏰ Time out!', 'bad');
+    }
+  }, 1000);
+}
+
+function setFeedback(msg, type) {
+  fb.textContent = msg;
+  fb.className = 'maze-feedback ' + type;
+}
+
+function updateDisplays() {
+  document.getElementById('level-disp').textContent = currentLevel + 1;
+  document.getElementById('dim-disp').textContent = `${COLS}×${ROWS}`;
+  const mins = Math.floor(timeLeft/60);
+  const secs = (timeLeft%60).toString().padStart(2,'0');
+  document.getElementById('time-disp').textContent = `${mins}:${secs}`;
+  const coll = keys.filter(k=>k.collected).length;
+  document.getElementById('keys-disp').textContent = `${coll}/${NUM_KEYS}`;
+  document.getElementById('moves-disp').textContent = moves;
+  document.getElementById('score-disp').textContent = score;
+  
+  const kind = document.getElementById('key-indicator');
+  kind.innerHTML = '';
+  for(let i=0; i<NUM_KEYS; i++) {
+    const k = document.createElement('div');
+    k.className = 'key-slot' + (i<coll ? ' collected' : '');
+    k.innerHTML = i<coll ? '🔑' : '🔒';
+    kind.appendChild(k);
+  }
+}
+
+function tryMove(dir) {
+  if (locked) return;
+  const DIRS = {N:[-1,0],S:[1,0],E:[0,1],W:[0,-1]};
+  const [dr,dc] = DIRS[dir];
+  const nr = player.r+dr, nc = player.c+dc;
+  if (nr<0||nc<0||nr>=ROWS||nc>=COLS) return;
+  
+  if (!passages[player.r][player.c].has(dir)) {
+    score = Math.max(0, score-5);
+    const playerCell = document.querySelector('.hmaze-cell.player-here');
+    if(playerCell) {
+      playerCell.classList.add('shake');
+      setTimeout(() => playerCell.classList.remove('shake'), 300);
+    }
+    setFeedback('🚧 Blocked!', 'bad');
+    updateDisplays();
+    return;
+  }
+  
+  player = {r:nr, c:nc};
+  moves++;
+  
+  const keyIdx = keys.findIndex(k => k.r===nr && k.c===nc && !k.collected);
+  if (keyIdx >= 0) {
+    keys[keyIdx].collected = true;
+    score += 50;
+    setFeedback('🔑 Key collected!', 'good');
+  }
+  
+  if (nr===exit.r && nc===exit.c && keys.every(k=>k.collected)) {
+    levelDone = true;
+    renderBoard();
+    onLevelComplete();
+    return;
+  } else if (nr===exit.r && nc===exit.c) {
+    setFeedback('Collect all keys first!', 'bad');
+  } else {
+    if(keyIdx < 0) setFeedback('', '');
+  }
+  
+  updateDisplays();
+  renderBoard();
+}
+
+function onLevelComplete() {
+  locked = true;
+  clearInterval(timerInterval);
+  const bonus = timeLeft * 3;
+  score += 200 + bonus;
+  setFeedback('🎉 Escaped! Loading next maze...', 'good');
+  updateDisplays();
+  setTimeout(() => {
+    startLevel(currentLevel + 1);
+  }, 1500);
+}
+
+function renderBoard() {
+  board.innerHTML = '';
+  board.style.gridTemplateColumns = `repeat(${COLS}, 1fr)`;
+  board.style.gridTemplateRows = `repeat(${ROWS}, 1fr)`;
+  
+  for (let r=0; r<ROWS; r++) {
+    for (let c=0; c<COLS; c++) {
+      const cell = document.createElement('div');
+      cell.className = 'hmaze-cell';
+      
+      if (player.r===r && player.c===c) {
+        cell.classList.add('player-here');
+        cell.innerHTML = '<div class="maze-player"></div>';
+      }
+      
+      const k = keys.find(k=>k.r===r&&k.c===c&&!k.collected);
+      if (k) cell.innerHTML = '<span>🔑</span>';
+      
+      if (exit.r===r && exit.c===c && !levelDone) {
+        const allKeys = keys.every(k=>k.collected);
+        cell.innerHTML = `<span>${allKeys?'🚪✨':'🚪'}</span>`;
+        if (allKeys) cell.style.background='rgba(34,197,94,0.12)';
+      }
+      
+      cell.addEventListener('click', () => {
+        const dr=r-player.r, dc=c-player.c;
+        if(Math.abs(dr)+Math.abs(dc)===1){
+          if(dr===-1)tryMove('N');
+          else if(dr===1)tryMove('S');
+          else if(dc===1)tryMove('E');
+          else tryMove('W');
+        }
+      });
+      
+      board.appendChild(cell);
+    }
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if (['ArrowUp','w','W'].includes(e.key)) tryMove('N');
+  if (['ArrowDown','s','S'].includes(e.key)) tryMove('S');
+  if (['ArrowLeft','a','A'].includes(e.key)) tryMove('W');
+  if (['ArrowRight','d','D'].includes(e.key)) tryMove('E');
+});
+
+document.querySelectorAll('.dpad-btn').forEach(btn => {
+  btn.addEventListener('click', () => tryMove(btn.dataset.dir));
+});
+
+document.getElementById('btn-restart').addEventListener('click', () => {
+  if (confirm("Restart this level? Score will reset.")) {
+    score = 0;
+    startLevel(currentLevel);
+  }
+});
+
+startLevel(0);
+</script>
+</body>
+</html>
